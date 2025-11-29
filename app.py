@@ -1,4 +1,4 @@
-# app.py - CliniScan final deploy-ready
+# deploy-ready corrected
 import streamlit as st
 import torch
 import torch.nn.functional as F
@@ -22,65 +22,23 @@ st.title("🩺 CliniScan - Lung Abnormality Detection Dashboard")
 # Paths (adjust if needed)
 # -------------------------
 CLASS_MODEL_PATH = os.path.join("Script files", "classification_model.pth")
-
-# ▶️ FIX APPLIED HERE
 DETECT_MODEL_PATH = os.path.join("Script files", "detection_model.pt")
-# -------------------------
 
 # -------------------------
-# Helper: load class names from common files
+# Load class names (must match your model)
 # -------------------------
-def load_class_names():
-    candidates = [
-        "classes.txt",
-        "class_names.json",
-        "chest_xray_coco_cleaned.json",
-        "class_names.txt"
-    ]
-    for fn in candidates:
-        if os.path.exists(fn):
-            try:
-                if fn.endswith(".json"):
-                    j = json.load(open(fn, "r"))
-                    if isinstance(j, dict) and "categories" in j:
-                        return [c["name"] for c in j["categories"]]
-                    if isinstance(j, dict) and "names" in j:
-                        return j["names"]
-                    if isinstance(j, list):
-                        return j
-                else:
-                    with open(fn, "r") as f:
-                        names = [line.strip() for line in f if line.strip()]
-                        if names:
-                            return names
-            except Exception:
-                continue
+CLASS_NAMES = ["Normal", "Atelectasis", "Cardiomegaly", "Consolidation", "Edema", "Effusion",
+               "Emphysema", "Fibrosis", "Hernia", "Infiltration", "Mass", "Nodule",
+               "Pleural_Thickening", "Pneumonia", "Pneumothorax"]
 
-    fallback = [
-        "Atelectasis", "Cardiomegaly", "Consolidation", "Edema", "Effusion",
-        "Emphysema", "Fibrosis", "Hernia", "Infiltration", "Mass",
-        "Nodule", "Pleural_Thickening", "Pneumonia", "Pneumothorax", "Normal"
-    ]
-    return fallback
-
-CLASS_NAMES = load_class_names()
-
-# Sidebar control
+# Sidebar: Normal class selection
 st.sidebar.header("Settings")
-st.sidebar.write("If the automatic class names are incorrect, edit them here or choose which label corresponds to 'Normal'.")
-
-if st.sidebar.button("Show/Edit class names"):
-    txt = st.sidebar.text_area("Edit class names (comma separated)", ", ".join(CLASS_NAMES), height=200)
-    try:
-        edited = [s.strip() for s in txt.split(",") if s.strip()]
-        if edited:
-            CLASS_NAMES = edited
-            st.sidebar.success("Class names updated for this session.")
-    except Exception:
-        st.sidebar.error("Failed to parse class names.")
-
-normal_default = CLASS_NAMES.index("Normal") if "Normal" in CLASS_NAMES else None
-normal_label = st.sidebar.selectbox("Which class should be considered NORMAL?", options=CLASS_NAMES, index=(normal_default if normal_default is not None else 0))
+normal_default = CLASS_NAMES.index("Normal")
+normal_label = st.sidebar.selectbox(
+    "Which class should be considered NORMAL?", 
+    options=CLASS_NAMES, 
+    index=normal_default
+)
 
 # -------------------------
 # Load classification model
@@ -94,7 +52,6 @@ def load_classification_model(path=CLASS_MODEL_PATH):
         torch.serialization.add_safe_globals([EfficientNet])
     except Exception:
         pass
-
     try:
         model = torch.load(path, map_location="cpu", weights_only=False)
         model.eval()
@@ -126,14 +83,11 @@ det_model = load_detection_model()
 # Grad-CAM
 # -------------------------
 def generate_gradcam(model, img_tensor, target_class):
-    activations = {}
-    gradients = {}
-
+    activations, gradients = {}, {}
     last_conv = None
     for name, module in model.named_modules():
         if isinstance(module, torch.nn.Conv2d):
             last_conv = module
-
     if last_conv is None:
         return None
 
@@ -169,16 +123,14 @@ def generate_gradcam(model, img_tensor, target_class):
     grads = grads.cpu().numpy()[0]
     weights = np.mean(grads, axis=(1,2))
     cam = np.zeros(acts.shape[1:], dtype=np.float32)
-
     for i, w in enumerate(weights):
         cam += w * acts[i]
 
     cam = np.maximum(cam, 0)
     cam = (cam - cam.min()) / (cam.max() + 1e-8)
-    H = img_tensor.shape[2]; W = img_tensor.shape[3]
+    H, W = img_tensor.shape[2], img_tensor.shape[3]
     cam = cv2.resize(cam, (W, H))
     cam = np.uint8(255 * cam)
-
     heatmap = cv2.applyColorMap(cam, cv2.COLORMAP_JET)
     heatmap = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)
     return heatmap
@@ -190,7 +142,7 @@ st.subheader("Upload a Chest X-Ray Image")
 uploaded_file = st.file_uploader("Choose an image...", type=["png","jpg","jpeg"])
 
 if uploaded_file is None:
-    st.info("Upload an X-ray image to see classification, Grad-CAM and detection.")
+    st.info("Upload an X-ray image to see classification, Grad-CAM, and detection.")
 else:
     image = Image.open(uploaded_file).convert("RGB")
     st.image(image, caption="Uploaded Image", use_column_width=True)
@@ -211,35 +163,27 @@ else:
         st.subheader("Classification")
         with torch.no_grad():
             logits = clf_model(input_tensor)
-            if isinstance(logits, torch.Tensor):
-                probs = F.softmax(logits, dim=1).cpu().numpy()[0]
-            else:
-                logits_tensor = logits[0] if isinstance(logits, (list,tuple)) else torch.tensor(logits)
-                probs = F.softmax(logits_tensor, dim=1).cpu().numpy()[0]
-
-        if len(CLASS_NAMES) != probs.shape[0]:
-            st.warning(f"Class names count mismatch.")
-            display_names = [f"Class_{i}" for i in range(probs.shape[0])]
-        else:
-            display_names = CLASS_NAMES
+            probs = F.softmax(logits, dim=1).cpu().numpy()[0]
 
         idx = int(np.argmax(probs))
-        label = display_names[idx]
+        label = CLASS_NAMES[idx]
         confidence = probs[idx]*100
 
         st.markdown(f"### 🔎 Predicted: **{label}** — Confidence: **{confidence:.2f}%**")
 
-        if label == normal_label:
+        # ✅ Corrected normal/abnormal logic with confidence threshold
+        if label == normal_label and confidence > 50:  # adjust threshold as needed
             st.success("✅ This X-ray is NORMAL")
         else:
             st.error("⚠️ This X-ray is ABNORMAL")
 
+        # Show top 3 predictions
         st.write("Top 3 predictions:")
         top3 = probs.argsort()[-3:][::-1]
         for i in top3:
-            name = display_names[i] if i < len(display_names) else f"Class_{i}"
-            st.write(f"- {name}: {probs[i]*100:.2f}%")
+            st.write(f"- {CLASS_NAMES[i]}: {probs[i]*100:.2f}%")
 
+        # Grad-CAM overlay
         try:
             heatmap = generate_gradcam(clf_model, input_tensor, idx)
             if heatmap is not None:
@@ -287,6 +231,8 @@ else:
 # -------------------------
 st.markdown("---")
 st.markdown("### 👩‍💻 Developed by **Nandini💙** — For research & educational use only.")
+
+
 
 
 
