@@ -22,7 +22,7 @@ st.title("🩺 CliniScan - Lung Abnormality Detection Dashboard")
 # Paths (adjust if needed)
 # -------------------------
 CLASS_MODEL_PATH = os.path.join("Script files", "classification_model.pth")
-DETECT_MODEL_PATH = os.path.join("models", "detection_model.pt")
+DETECT_MODEL_PATH = os.path.join("Script files", "detection_model.pt")
 
 # -------------------------
 # Helper: load class names from common files
@@ -317,6 +317,7 @@ else:
 # -------------------------
 st.markdown("---")
 st.markdown("### 👩‍💻 Developed by **Nandini** — For research & educational use only.")
+
 
 
 
