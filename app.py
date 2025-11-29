@@ -7,6 +7,7 @@ import torchvision.transforms as transforms
 from torchvision.models import resnet50
 from torchvision.models.feature_extraction import create_feature_extractor
 import cv2
+import os
 
 # -------------------------
 # Page Configuration
@@ -24,14 +25,35 @@ st.title("🩺 CliniScan - Lung Abnormality Detection System")
 # -------------------------
 @st.cache_resource
 def load_detection_model():
-    return YOLO("Script files/detection_model.pt")
+    # Handle space in folder name
+    possible_dirs = ["Script files", "script_files"]
+    model_path = None
+    for dir_name in possible_dirs:
+        temp_path = os.path.join(os.path.dirname(__file__), dir_name, "detection_model.pt")
+        if os.path.exists(temp_path):
+            model_path = temp_path
+            break
+    if model_path is None:
+        raise FileNotFoundError("Detection model not found in expected folders!")
+    return YOLO(model_path)
 
 @st.cache_resource
 def load_classification_model():
     model = resnet50(pretrained=False)
     model.fc = torch.nn.Linear(2048, 2)
-    # UPDATED: load .pth model
-    model.load_state_dict(torch.load("Script files/classification_model.pth", map_location="rb"))
+    
+    # Handle space in folder name
+    possible_dirs = ["Script files", "script_files"]
+    model_path = None
+    for dir_name in possible_dirs:
+        temp_path = os.path.join(os.path.dirname(__file__), dir_name, "classification_model.pth")
+        if os.path.exists(temp_path):
+            model_path = temp_path
+            break
+    if model_path is None:
+        raise FileNotFoundError("Classification model not found in expected folders!")
+    
+    model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
     model.eval()
     return model
 
@@ -54,11 +76,12 @@ def generate_gradcam(model, img_tensor, target_layer="layer4"):
     model.eval()
     extractor = create_feature_extractor(model, return_nodes={target_layer: "feat"})
     features = extractor(img_tensor.unsqueeze(0))["feat"]
-
+    
     heatmap = torch.mean(features[0], dim=0).detach().numpy()
     heatmap = cv2.resize(heatmap, (224, 224))
     heatmap = np.maximum(heatmap, 0)
-    heatmap /= heatmap.max()
+    if heatmap.max() != 0:
+        heatmap /= heatmap.max()
     return heatmap
 
 # -------------------------
@@ -84,12 +107,10 @@ if uploaded_file:
     # Classification
     # -------------------------
     st.subheader("🧬 Classification Results")
-
     input_tensor = transform(img)
     output = classification_model(input_tensor.unsqueeze(0))
     prob = torch.softmax(output, dim=1)
     pred_class = torch.argmax(prob).item()
-
     classes = ["Normal", "Abnormal"]
     st.write(f"### **Prediction: {classes[pred_class]}**")
     st.write(f"Confidence: {prob[0][pred_class].item():.4f}")
@@ -98,18 +119,9 @@ if uploaded_file:
     # Grad-CAM Visualization
     # -------------------------
     st.subheader("🔥 Grad-CAM Heatmap")
-
     heatmap = generate_gradcam(classification_model, input_tensor)
-
     heatmap = cv2.applyColorMap(np.uint8(255 * heatmap), cv2.COLORMAP_JET)
     heatmap = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)
-
     blended = cv2.addWeighted(heatmap, 0.5, cv2.resize(img_np, (224,224)), 0.5, 0)
-
     st.image(blended, caption="Grad-CAM Heatmap", use_column_width=False)
-
-
-
-
-
 
