@@ -1,165 +1,153 @@
 import streamlit as st
 import torch
-import torchvision.transforms as transforms
-import torchvision
-from torchvision import models
+import torch.nn as nn
+from torchvision import transforms
 from PIL import Image
 import numpy as np
 import cv2
-from ultralytics import YOLO
 
-# ---------------------------------------------------------
-# STREAMLIT PAGE CONFIG
-# ---------------------------------------------------------
-st.set_page_config(page_title="CliniScan - Lung Abnormality Detection", layout="wide")
-
-st.title("🩺 CliniScan – Lung Abnormality Detection")
-st.write("Upload a Chest X-Ray image for **Classification + Detection + Grad-CAM**")
-
-# ---------------------------------------------------------
-# MODEL PATHS (MATCHING YOUR GITHUB)
-# ---------------------------------------------------------
-CLASSIFICATION_MODEL_PATH = "Script files/classification_model.pth"
-DETECTION_MODEL_PATH = "Script files/detection_model.pt"
-
-# ---------------------------------------------------------
-# SAFE GLOBALS FIX FOR EFFICIENTNET (IMPORTANT)
-# ---------------------------------------------------------
-torch.serialization.add_safe_globals([torchvision.models.efficientnet.EfficientNet])
-
-
-# ---------------------------------------------------------
+# =============================
 # LOAD CLASSIFICATION MODEL
-# ---------------------------------------------------------
-@st.cache_resource
-def load_classification_model():
-    model = torch.load(CLASSIFICATION_MODEL_PATH, map_location="cpu")
-    model.eval()
-    return model
+# =============================
+class ClassificationModel(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.model = torch.load("Script files/classification_model.pth", map_location="cpu")
+        self.model.eval()
 
+    def forward(self, x):
+        return self.model(x)
 
-# ---------------------------------------------------------
+# =============================
 # LOAD DETECTION MODEL
-# ---------------------------------------------------------
-@st.cache_resource
+# (YOLO / Torch Hub style)
+# =============================
 def load_detection_model():
-    model = YOLO(DETECTION_MODEL_PATH)
+    model = torch.load("Script files/detection_model.pt", map_location="cpu")
     return model
 
 
-clf_model = load_classification_model()
-det_model = load_detection_model()
-
-# ---------------------------------------------------------
-# TRANSFORMS (CHANGE SIZE IF YOU TRAINED DIFFERENT)
-# ---------------------------------------------------------
-img_size = 224
+# =============================
+# TRANSFORMS (224 × 224)
+# =============================
 transform = transforms.Compose([
-    transforms.Resize((img_size, img_size)),
+    transforms.Resize((224, 224)),
     transforms.ToTensor()
 ])
 
-# ---------------------------------------------------------
-# CLASS LABELS (EDIT IF YOU HAVE MORE CLASSES)
-# ---------------------------------------------------------
-class_names = ["Normal", "Abnormal"]
+class_names = ["Normal", "Abnormal"]   # YOUR LABELS
 
 
-# ---------------------------------------------------------
+# =============================
 # GRAD-CAM IMPLEMENTATION
-# ---------------------------------------------------------
+# =============================
 class GradCAM:
     def __init__(self, model, target_layer):
         self.model = model
-        self.target_layer = target_layer
-        self.gradients = None
-        self.activations = None
+        self.gradient = None
+        self.activation = None
 
-        target_layer.register_forward_hook(self.save_activation)
-        target_layer.register_full_backward_hook(self.save_gradient)
+        def save_activation(module, inp, out):
+            self.activation = out
 
-    def save_activation(self, module, input, output):
-        self.activations = output
+        def save_gradient(module, grad_in, grad_out):
+            self.gradient = grad_out[0]
 
-    def save_gradient(self, module, grad_input, grad_output):
-        self.gradients = grad_output[0]
+        target_layer.register_forward_hook(save_activation)
+        target_layer.register_backward_hook(save_gradient)
 
-    def generate(self, input_tensor):
-        output = self.model(input_tensor)
-        output_idx = output.argmax()
-
+    def __call__(self, x):
+        output = self.model(x)
+        pred_class = output.argmax()
         self.model.zero_grad()
-        output[0, output_idx].backward()
+        output[0, pred_class].backward()
 
-        grad = self.gradients[0].cpu().data.numpy()
-        act = self.activations[0].cpu().data.numpy()
+        gradient = self.gradient[0].detach().numpy()
+        activation = self.activation[0].detach().numpy()
 
-        weights = np.mean(grad, axis=(1, 2))
-        cam = np.zeros(act.shape[1:], dtype=np.float32)
+        weights = np.mean(gradient, axis=(1, 2))
+        cam = np.zeros(activation.shape[1:], dtype=np.float32)
 
-        for w, f in zip(weights, act):
-            cam += w * f
+        for i, w in enumerate(weights):
+            cam += w * activation[i]
 
         cam = np.maximum(cam, 0)
         cam = cv2.resize(cam, (224, 224))
-        cam = cam - cam.min()
-        cam = cam / cam.max()
 
-        return cam, output_idx
+        cam -= cam.min()
+        cam /= cam.max()
 
-
-# Initialize Grad-CAM for EfficientNet (last conv layer)
-target_layer = clf_model.features[6][0]
-gradcam = GradCAM(clf_model, target_layer)
+        return cam, pred_class.item()
 
 
-# ---------------------------------------------------------
-# IMAGE UPLOAD
-# ---------------------------------------------------------
+# =============================
+# STREAMLIT UI
+# =============================
+st.title("🩺 CliniScan – Lung Abnormality Detection")
+st.write("Upload a Chest X-Ray image for Classification + Detection + Grad-CAM")
+
 uploaded_file = st.file_uploader("Choose an image", type=["jpg", "jpeg", "png"])
 
 if uploaded_file:
-    image = Image.open(uploaded_file).convert("RGB")
+    img = Image.open(uploaded_file).convert("RGB")
+    st.image(img, caption="Uploaded Image", use_column_width=True)
 
-    st.image(image, caption="Uploaded Image", use_container_width=True)
+    img_tensor = transform(img).unsqueeze(0)
 
-    # ---------------------------------------------------------
+    # -----------------------------
     # CLASSIFICATION
-    # ---------------------------------------------------------
+    # -----------------------------
     st.subheader("🔍 Classification Result")
 
-    input_tensor = transform(image).unsqueeze(0)
-
+    clf_model = ClassificationModel()
     with torch.no_grad():
-        output = clf_model(input_tensor)
-        _, predicted = torch.max(output, 1)
-        class_label = class_names[predicted.item()]
+        output = clf_model(img_tensor)
+        pred_class = output.argmax().item()
+        st.success(f"Prediction: **{class_names[pred_class]}**")
 
-    st.success(f"**Prediction:** {class_label}")
+    # -----------------------------
+    # GRAD-CAM
+    # -----------------------------
+    st.subheader("🔥 Grad-CAM Explanation")
 
-    # ---------------------------------------------------------
-    # GRAD-CAM HEATMAP
-    # ---------------------------------------------------------
-    st.subheader("🔥 Grad-CAM Heatmap")
+    # last conv layer of your model (usually model.features[-1] or model.layer4)
+    # NOTE: Your .pth model already contains the architecture.
+    # So we extract the last conv layer dynamically.
+    last_conv = None
+    for layer in reversed(list(clf_model.model.modules())):
+        if isinstance(layer, nn.Conv2d):
+            last_conv = layer
+            break
 
-    cam, _ = gradcam.generate(input_tensor)
+    gradcam = GradCAM(clf_model.model, last_conv)
+    cam, class_id = gradcam(img_tensor)
 
-    heatmap = cv2.applyColorMap(np.uint8(cam * 255), cv2.COLORMAP_JET)
-    heatmap = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)
+    heatmap = cv2.applyColorMap(np.uint8(255 * cam), cv2.COLORMAP_JET)
+    orig = np.array(img.resize((224, 224)))
+    superimposed = cv2.addWeighted(orig, 0.6, heatmap, 0.4, 0)
 
-    overlay = cv2.addWeighted(np.array(image.resize((224, 224))), 0.6, heatmap, 0.4, 0)
+    st.image(superimposed, caption="Grad-CAM Heatmap", use_column_width=True)
 
-    st.image(overlay, caption="Grad-CAM Visualization", use_container_width=True)
+    # -----------------------------
+    # DETECTION
+    # -----------------------------
+    st.subheader("📦 Detection Result (Bounding Boxes)")
 
-    # ---------------------------------------------------------
-    # OBJECT DETECTION
-    # ---------------------------------------------------------
-    st.subheader("📦 Object Detection Result")
+    det_model = load_detection_model()
 
-    results = det_model(image)
+    # If YOLO-type model:
+    try:
+        results = det_model(img)
+        results.render()
+        st.image(results.ims[0], caption="Detection Output", use_column_width=True)
+    except:
+        st.warning("Detection model format not YOLO — showing raw prediction instead.")
+        st.write(det_model(img_tensor))
 
-    annotated = results[0].plot()  # draw boxes
 
-    st.image(annotated, caption="Detected Abnormalities", use_container_width=True)
+st.write("---")
+st.write("Made by **Nandini** 🩵")
 
 
+
+   
