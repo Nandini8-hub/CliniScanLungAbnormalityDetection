@@ -11,31 +11,17 @@ import torch.nn as nn
 import torchvision
 from torch.serialization import add_safe_globals
 
-add_safe_globals([
-    nn.Sequential,
-    nn.Conv2d,
-    nn.BatchNorm2d,
-    nn.ReLU,
-    nn.Linear,
-    torchvision.models.efficientnet.EfficientNet
-])
+# Allow EfficientNet full-model loading
+from torchvision.models.efficientnet import EfficientNet
+add_safe_globals([EfficientNet])
 
 
 # =============================
-# LOAD CLASSIFICATION MODEL
-# (EfficientNet + state_dict)
+# LOAD FULL EFFICIENTNET MODEL
 # =============================
 def load_classification_model():
-    # 1. Create architecture
-    model = torchvision.models.efficientnet_b0(pretrained=False)
-
-    # 2. Adjust classifier for your labels
-    model.classifier[1] = nn.Linear(1280, 2)   # Normal / Abnormal
-
-    # 3. Load ONLY the weights (state_dict)
-    state_dict = torch.load("Script files/classification_model.pth", map_location="cpu")
-
-    model.load_state_dict(state_dict)
+    # Load full model saved by torch.save(model)
+    model = torch.load("Script files/classification_model.pth", map_location="cpu")
     model.eval()
     return model
 
@@ -44,17 +30,9 @@ def load_classification_model():
 # CLASSIFICATION MODEL WRAPPER
 # =============================
 class ClassificationModel(nn.Module):
-    def __init__(self):
-        super().__init__()
-
-        # Build EfficientNet architecture
-        self.model = torchvision.models.efficientnet_b0(pretrained=False)
-        self.model.classifier[1] = nn.Linear(1280, 2)
-
-        # Load the state_dict
-        state_dict = torch.load("Script files/classification_model.pth", map_location="cpu")
-        self.model.load_state_dict(state_dict)
-
+    def _init_(self):
+        super()._init_()
+        self.model = torch.load("Script files/classification_model.pth", map_location="cpu")
         self.model.eval()
 
     def forward(self, x):
@@ -84,7 +62,7 @@ class_names = ["Normal", "Abnormal"]
 # GRAD-CAM IMPLEMENTATION
 # =============================
 class GradCAM:
-    def __init__(self, model, target_layer):
+    def _init_(self, model, target_layer):
         self.model = model
         self.gradient = None
         self.activation = None
@@ -98,7 +76,7 @@ class GradCAM:
         target_layer.register_forward_hook(save_activation)
         target_layer.register_backward_hook(save_gradient)
 
-    def __call__(self, x):
+    def _call_(self, x):
         output = self.model(x)
         pred_class = output.argmax()
         self.model.zero_grad()
@@ -145,7 +123,7 @@ if uploaded_file:
     with torch.no_grad():
         output = clf_model(img_tensor)
         pred_class = output.argmax().item()
-        st.success(f"Prediction: **{class_names[pred_class]}**")
+        st.success(f"Prediction: {class_names[pred_class]}")
 
     # -----------------------------
     # GRAD-CAM
@@ -184,18 +162,5 @@ if uploaded_file:
 
 
 st.write("---")
-st.write("Made by **Nandini** 🩵")
-
-
-
-
-
-   
-
-
-
-
-
-
-
+st.write("Made by Nandini 🩵")
 
