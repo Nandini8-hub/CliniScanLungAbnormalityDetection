@@ -1,13 +1,12 @@
-import streamlit as st
-import torch
-import torch.nn as nn
-from torchvision import transforms
-from PIL import Image
-import numpy as np
-import cv2
+
 # ------------------------------
 # SAFE GLOBALS FOR PYTORCH 2.6
 # ------------------------------
+import streamlit as st
+import numpy as np
+from torchvision import transforms
+from PIL import Image
+import cv2
 import torch
 import torch.nn as nn
 import torchvision
@@ -328,5 +327,6 @@ st.write("Made by **Nandini** 🩵")
 
 
    
+
 
 
