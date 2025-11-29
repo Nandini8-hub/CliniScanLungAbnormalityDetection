@@ -31,7 +31,7 @@ def load_classification_model():
     model = resnet50(pretrained=False)
     model.fc = torch.nn.Linear(2048, 2)
     # UPDATED: load .pth model
-    model.load_state_dict(torch.load("script files/efficientnet_best_model_cpu.pth", map_location="cpu"))
+    model.load_state_dict(torch.load("script files/classification_model.pth", map_location="cpu"))
     model.eval()
     return model
 
@@ -107,4 +107,5 @@ if uploaded_file:
     blended = cv2.addWeighted(heatmap, 0.5, cv2.resize(img_np, (224,224)), 0.5, 0)
 
     st.image(blended, caption="Grad-CAM Heatmap", use_column_width=False)
+
 
