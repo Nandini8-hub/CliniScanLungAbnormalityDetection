@@ -19,25 +19,26 @@ st.set_page_config(
 st.title("🩺 CliniScan - Lung Abnormality Detection System")
 
 # -------------------------
-# Load Models
+# Load Models (UPDATED: Removed 'models/' folder name)
 # -------------------------
 @st.cache_resource
 def load_detection_model():
-    return YOLO("models/detection_model.pt")
+    return YOLO("Script files/detection_model.pt")  # UPDATED
 
 @st.cache_resource
 def load_classification_model():
     model = resnet50(pretrained=False)
-    model.fc = torch.nn.Linear(2048, 2)   # change depending on your classification classes
-    model.load_state_dict(torch.load("models/classification_model.pth", map_location="cpu"))
+    model.fc = torch.nn.Linear(2048, 2)
+    model.load_state_dict(torch.load("script/classification_model.pth", map_location="cpu"))  # UPDATED
     model.eval()
     return model
+
 
 detection_model = load_detection_model()
 classification_model = load_classification_model()
 
 # -------------------------
-# Preprocessing for Classifier
+# Preprocessing
 # -------------------------
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
@@ -46,7 +47,7 @@ transform = transforms.Compose([
 ])
 
 # -------------------------
-# GradCAM Function
+# GradCAM
 # -------------------------
 def generate_gradcam(model, img_tensor, target_layer="layer4"):
     model.eval()
@@ -57,7 +58,6 @@ def generate_gradcam(model, img_tensor, target_layer="layer4"):
     heatmap = cv2.resize(heatmap, (224, 224))
     heatmap = np.maximum(heatmap, 0)
     heatmap /= heatmap.max()
-
     return heatmap
 
 # -------------------------
