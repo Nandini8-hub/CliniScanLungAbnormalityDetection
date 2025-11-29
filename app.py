@@ -11,28 +11,31 @@ import torch.nn as nn
 import torchvision
 from torch.serialization import add_safe_globals
 
-# Allow EfficientNet full-model loading
-from torchvision.models.efficientnet import EfficientNet
-add_safe_globals([EfficientNet])
+add_safe_globals([
+    nn.Sequential,
+    nn.Conv2d,
+    nn.BatchNorm2d,
+    nn.ReLU,
+    nn.Linear,
+    torchvision.models.efficientnet.EfficientNet
+])
 
 
 # =============================
-# LOAD FULL EFFICIENTNET MODEL
-# =============================
-def load_classification_model():
-    # Load full model saved by torch.save(model)
-    model = torch.load("Script files/classification_model.pth", map_location="cpu")
-    model.eval()
-    return model
-
-
-# =============================
-# CLASSIFICATION MODEL WRAPPER
+# CLASSIFICATION MODEL
 # =============================
 class ClassificationModel(nn.Module):
     def _init_(self):
         super()._init_()
-        self.model = torch.load("Script files/classification_model.pth", map_location="cpu")
+
+        # Build EfficientNet architecture
+        self.model = torchvision.models.efficientnet_b0(pretrained=False)
+        self.model.classifier[1] = nn.Linear(1280, 2)
+
+        # Load state_dict only
+        state_dict = torch.load("Script files/classification_model.pth", map_location="cpu")
+        self.model.load_state_dict(state_dict)
+
         self.model.eval()
 
     def forward(self, x):
@@ -48,7 +51,7 @@ def load_detection_model():
 
 
 # =============================
-# TRANSFORMS (224 × 224)
+# TRANSFORMS
 # =============================
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
@@ -59,7 +62,7 @@ class_names = ["Normal", "Abnormal"]
 
 
 # =============================
-# GRAD-CAM IMPLEMENTATION
+# GRAD-CAM
 # =============================
 class GradCAM:
     def _init_(self, model, target_layer):
@@ -79,6 +82,7 @@ class GradCAM:
     def _call_(self, x):
         output = self.model(x)
         pred_class = output.argmax()
+
         self.model.zero_grad()
         output[0, pred_class].backward()
 
@@ -130,6 +134,7 @@ if uploaded_file:
     # -----------------------------
     st.subheader("🔥 Grad-CAM Explanation")
 
+    # Find last Conv2D layer
     last_conv = None
     for layer in reversed(list(clf_model.model.modules())):
         if isinstance(layer, nn.Conv2d):
@@ -148,7 +153,7 @@ if uploaded_file:
     # -----------------------------
     # DETECTION
     # -----------------------------
-    st.subheader("📦 Detection Result (Bounding Boxes)")
+    st.subheader("📦 Detection Result")
 
     det_model = load_detection_model()
 
@@ -157,10 +162,9 @@ if uploaded_file:
         results.render()
         st.image(results.ims[0], caption="Detection Output", use_column_width=True)
     except:
-        st.warning("Detection model format not YOLO — showing raw prediction instead.")
+        st.warning("Detection model is not YOLO — showing raw output.")
         st.write(det_model(img_tensor))
 
 
 st.write("---")
 st.write("Made by Nandini 🩵")
-
