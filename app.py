@@ -37,7 +37,7 @@ def load_classification_model():
 # =============================
 # LOAD CLASSIFICATION MODEL
 # =============================
-class Classificationmodel(nn.Module):
+class ClassificationModel(nn.Module):
     def __init__(self):
         super().__init__()
         self.model = torch.load("Script files/classification_model.pth", map_location="cpu")
@@ -127,7 +127,7 @@ if uploaded_file:
     # -----------------------------
     st.subheader("🔍 Classification Result")
 
-    clf_model = classificationmodel()
+    clf_model = ClassificationModel()
     with torch.no_grad():
         output = clf_model(img_tensor)
         pred_class = output.argmax().item()
@@ -179,6 +179,7 @@ st.write("Made by **Nandini** 🩵")
 
 
    
+
 
 
 
