@@ -39,7 +39,7 @@ def load_classification_model():
     model.classifier[1] = nn.Linear(1280, 2)
 
     # Load state_dict
-    state_dict = torch.load(r"Script files/classification_model.pth", map_location="cpu")
+    state_dict = torch.load("Script files/classification_model.pth", map_location="cpu")
 
     model.load_state_dict(state_dict)
 
@@ -138,6 +138,7 @@ if uploaded_file:
 
 st.write("---")
 st.write("Made by Nandini 🩵")
+
 
 
 
