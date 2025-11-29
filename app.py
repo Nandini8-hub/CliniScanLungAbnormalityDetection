@@ -1,4 +1,3 @@
-
 import streamlit as st
 import numpy as np
 from torchvision import transforms
@@ -9,6 +8,7 @@ import torch.nn as nn
 import torchvision
 from torch.serialization import add_safe_globals
 
+# Allow necessary globals for safe PyTorch 2.6 loading
 add_safe_globals([
     nn.Sequential,
     nn.Conv2d,
@@ -25,24 +25,23 @@ class ClassificationModel(nn.Module):
     def _init_(self):
         super()._init_()
 
+        # Build EfficientNet architecture
         self.model = torchvision.models.efficientnet_b0(pretrained=False)
-        self.model.classifier[1] = nn.Linear(1280, 2)
+        self.model.classifier[1] = nn.Linear(1280, 2)  # Normal / Abnormal
 
+        # Load model state_dict
         state_dict = torch.load("Script files/classification_model.pth", map_location="cpu")
         self.model.load_state_dict(state_dict)
-
         self.model.eval()
 
     def forward(self, x):
         return self.model(x)
-
 
 # =============================
 # DETECTION MODEL
 # =============================
 def load_detection_model():
     return torch.load("Script files/detection_model.pt", map_location="cpu")
-
 
 # =============================
 # TRANSFORMS
@@ -53,7 +52,6 @@ transform = transforms.Compose([
 ])
 
 class_names = ["Normal", "Abnormal"]
-
 
 # =============================
 # GRAD-CAM
@@ -96,11 +94,11 @@ class GradCAM:
 
         return cam, pred_class.item()
 
-
 # =============================
 # STREAMLIT APP
 # =============================
 st.title("🩺 CliniScan – Lung Abnormality Detection")
+st.write("Upload a Chest X-Ray image for Classification + Detection + Grad-CAM")
 
 uploaded_file = st.file_uploader("Choose an image", type=["jpg", "jpeg", "png"])
 
@@ -111,6 +109,7 @@ if uploaded_file:
     img_tensor = transform(img).unsqueeze(0)
 
     # ---- CLASSIFICATION ----
+    st.subheader("🔍 Classification Result")
     clf = ClassificationModel()
     with torch.no_grad():
         output = clf(img_tensor)
@@ -118,27 +117,27 @@ if uploaded_file:
         st.success(f"Prediction: {class_names[pred]}")
 
     # ---- GRAD-CAM ----
-    st.subheader("🔥 Grad-CAM")
+    st.subheader("🔥 Grad-CAM Explanation")
     last_conv = next(m for m in reversed(list(clf.model.modules())) if isinstance(m, nn.Conv2d))
     cam_gen = GradCAM(clf.model, last_conv)
-
     cam, _ = cam_gen(img_tensor)
+
     heatmap = cv2.applyColorMap(np.uint8(cam * 255), cv2.COLORMAP_JET)
     orig = np.array(img.resize((224, 224)))
-    final = cv2.addWeighted(orig, 0.6, heatmap, 0.4, 0)
-    st.image(final, caption="Grad-CAM Heatmap")
+    superimposed = cv2.addWeighted(orig, 0.6, heatmap, 0.4, 0)
+    st.image(superimposed, caption="Grad-CAM Heatmap", use_column_width=True)
 
     # ---- DETECTION ----
-    st.subheader("📦 Detection")
-    det = load_detection_model()
-
+    st.subheader("📦 Detection Result")
+    det_model = load_detection_model()
     try:
-        results = det(img)
+        results = det_model(img)
         results.render()
-        st.image(results.ims[0], caption="Detection Output")
+        st.image(results.ims[0], caption="Detection Output", use_column_width=True)
     except:
-        st.warning("Detection model not YOLO")
-        st.write(det(img_tensor))
+        st.warning("Detection model is not YOLO — showing raw output")
+        st.write(det_model(img_tensor))
 
 st.write("---")
 st.write("Made by Nandini 🩵")
+
