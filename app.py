@@ -41,7 +41,7 @@ clf_model = load_classification_model()
 @st.cache_resource
 def load_detection_model():
     try:
-        model = YOLO("models/detection_model.pt")  # adjust path if needed
+        model = YOLO("Script files/detection_model.pt")  # adjust path if needed
         return model
     except Exception as e:
         st.error(f"Error loading detection model: {e}")
@@ -146,6 +146,7 @@ if uploaded_file is not None:
         results = det_model.predict(np.array(image))
         annotated_image = results[0].plot()
         st.image(annotated_image, caption="Detection Results", use_column_width=True)
+
 
 
 
