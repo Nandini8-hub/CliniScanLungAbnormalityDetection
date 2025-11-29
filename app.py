@@ -336,7 +336,7 @@ with col2:
             if boxes:
                 st.json(boxes)
             else:
-                st.info("No detections found.")
+                st.info(" detections found.")
         except Exception as e:
             st.error(f"YOLO detection failed: {e}")
 
@@ -345,6 +345,7 @@ with col2:
 # -------------------------
 st.markdown("---")
 st.markdown("### 👩‍💻 Developed by **Nandini 💙** — For educational & research use only.")
+
 
 
 
