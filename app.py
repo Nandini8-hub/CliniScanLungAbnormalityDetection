@@ -6,6 +6,7 @@ import torch.nn.functional as F
 from PIL import Image
 import numpy as np
 from ultralytics import YOLO
+import cv2
 
 # -------------------------
 # Page Configuration
@@ -17,6 +18,27 @@ st.set_page_config(
 )
 
 st.title("🩺 CliniScan - Lung Abnormality Detection Dashboard")
+
+# -------------------------
+# Class Names
+# -------------------------
+CLASS_NAMES = [
+    "Normal", 
+    "Atelectasis", 
+    "Cardiomegaly", 
+    "Effusion", 
+    "Infiltration", 
+    "Mass", 
+    "Nodule", 
+    "Pneumonia", 
+    "Pneumothorax", 
+    "Consolidation", 
+    "Edema", 
+    "Emphysema", 
+    "Fibrosis", 
+    "Pleural_Thickening", 
+    "Hernia"
+]
 
 # -------------------------
 # Load Classification Model
@@ -50,7 +72,7 @@ def load_detection_model():
 det_model = load_detection_model()
 
 # -------------------------
-# Grad-CAM Function (Fixed)
+# Grad-CAM Function (Professional Visualization)
 # -------------------------
 def generate_gradcam(model, input_tensor, target_class=None):
     gradients = []
@@ -85,24 +107,24 @@ def generate_gradcam(model, input_tensor, target_class=None):
     loss.backward()
 
     # Compute Grad-CAM
-    gradient = gradients[0][0]          # (C, H, W)
-    activation = activations[0][0]      # (C, H, W)
-    weights = gradient.mean(dim=(1, 2))
-    cam = torch.zeros(activation.shape[1:], dtype=torch.float32)
+    gradient = gradients[0][0].cpu().detach().numpy()  # (C,H,W)
+    activation = activations[0][0].cpu().detach().numpy()
+    weights = np.mean(gradient, axis=(1, 2))  # channel-wise weights
+
+    cam = np.zeros(activation.shape[1:], dtype=np.float32)  # (H,W)
     for i, w in enumerate(weights):
         cam += w * activation[i]
-
-    cam = F.relu(cam)
+    cam = np.maximum(cam, 0)
     cam = cam - cam.min()
     cam = cam / (cam.max() + 1e-8)
+    cam = cv2.resize(cam, (input_tensor.shape[3], input_tensor.shape[2]))
+    cam = np.uint8(255 * cam)
 
-    # Resize to match input image
-    cam = torch.tensor(cam).unsqueeze(0).unsqueeze(0)  # (1,1,H,W)
-    cam_resized = F.interpolate(cam, size=(input_tensor.shape[2], input_tensor.shape[3]), mode='bilinear', align_corners=False)
-    cam_resized = cam_resized.squeeze().cpu().numpy()  # safe squeeze
-    heatmap = np.uint8(255 * cam_resized)
-    heatmap_pil = Image.fromarray(heatmap).convert("L").resize((input_tensor.shape[3], input_tensor.shape[2]))
-    return heatmap_pil
+    # Apply colormap
+    heatmap = cv2.applyColorMap(cam, cv2.COLORMAP_JET)
+    heatmap = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)
+
+    return heatmap
 
 # -------------------------
 # Image Upload
@@ -130,15 +152,29 @@ if uploaded_file is not None:
         with torch.no_grad():
             outputs = clf_model(input_tensor)
             probs = torch.softmax(outputs, dim=1).cpu().numpy()
-            predicted_class = np.argmax(probs)
+            predicted_index = np.argmax(probs)
+            predicted_label = CLASS_NAMES[predicted_index]
 
-        st.write(f"Predicted Class: **{predicted_class}**")
-        st.write(f"Class Probabilities: {probs}")
+        # Display readable prediction
+        st.write(f"Predicted Class: **{predicted_label}**")
+
+        # Normal / Abnormal
+        if predicted_label == "Normal":
+            st.success("✅ This X-ray is Normal")
+        else:
+            st.error("⚠️ This X-ray is Abnormal")
+
+        # Show top-3 probabilities
+        top3_indices = probs[0].argsort()[-3:][::-1]
+        st.write("Top 3 Predictions:")
+        for i in top3_indices:
+            st.write(f"{CLASS_NAMES[i]}: {probs[0][i]*100:.2f}%")
 
         # Grad-CAM visualization
-        gradcam_heatmap = generate_gradcam(clf_model, input_tensor, target_class=predicted_class)
-        gradcam_overlay = Image.blend(image.resize((224, 224)), gradcam_heatmap.convert("RGB"), alpha=0.5)
-        st.image(gradcam_overlay, caption="Grad-CAM Overlay", use_column_width=True)
+        heatmap = generate_gradcam(clf_model, input_tensor, target_class=predicted_index)
+        img_resized = np.array(image.resize((224, 224)))
+        overlay = cv2.addWeighted(img_resized, 0.6, heatmap, 0.4, 0)
+        st.image(overlay, caption="Grad-CAM Overlay", use_column_width=True)
 
     # -------------------------
     # Detection Prediction
@@ -148,6 +184,8 @@ if uploaded_file is not None:
         results = det_model.predict(np.array(image))
         annotated_image = results[0].plot()
         st.image(annotated_image, caption="Detection Results", use_column_width=True)
+
+
 
 
 
