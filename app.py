@@ -37,7 +37,7 @@ def load_classification_model():
 # =============================
 # LOAD CLASSIFICATION MODEL
 # =============================
-class ClassificationModel(nn.Module):
+class Classificationmodel(nn.Module):
     def __init__(self):
         super().__init__()
         self.model = torch.load("Script files/classification_model.pth", map_location="cpu")
@@ -179,6 +179,7 @@ st.write("Made by **Nandini** 🩵")
 
 
    
+
 
 
 
