@@ -127,7 +127,7 @@ if uploaded_file:
     # -----------------------------
     st.subheader("🔍 Classification Result")
 
-    clf_model = classification_model()
+    clf_model = classificationmodel()
     with torch.no_grad():
         output = clf_model(img_tensor)
         pred_class = output.argmax().item()
@@ -179,6 +179,7 @@ st.write("Made by **Nandini** 🩵")
 
 
    
+
 
 
 
