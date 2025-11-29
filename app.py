@@ -29,24 +29,41 @@ transform = transforms.Compose([
 class_names = ["Normal", "Abnormal"]
 
 # =============================
-# GRAD-CAM
+# BUILD & LOAD CLASSIFICATION MODEL
+# =============================
+def load_classification_model():
+    # Build EfficientNet architecture
+    model = torchvision.models.efficientnet_b0(pretrained=False)
+
+    # Adjust classifier (2 classes)
+    model.classifier[1] = nn.Linear(1280, 2)
+
+    # Load state_dict
+    state_dict = torch.load("Script files/classification_model.pth", map_location="cpu")
+    model.load_state_dict(state_dict)
+
+    model.eval()
+    return model
+
+# =============================
+# GRAD-CAM IMPLEMENTATION
 # =============================
 class GradCAM:
-    def _init_(self, model, target_layer):
+    def __init__(self, model, target_layer):
         self.model = model
         self.gradient = None
         self.activation = None
 
-        target_layer.register_forward_hook(self._save_activation)
-        target_layer.register_backward_hook(self._save_gradient)
+        target_layer.register_forward_hook(self.save_activation)
+        target_layer.register_backward_hook(self.save_gradient)
 
-    def _save_activation(self, module, inp, out):
+    def save_activation(self, module, inp, out):
         self.activation = out
 
-    def _save_gradient(self, module, grad_in, grad_out):
+    def save_gradient(self, module, grad_in, grad_out):
         self.gradient = grad_out[0]
 
-    def _call_(self, x):
+    def __call__(self, x):
         output = self.model(x)
         pred_class = output.argmax()
 
@@ -85,9 +102,8 @@ if uploaded_file:
 
     # ---- CLASSIFICATION ----
     st.subheader("🔍 Classification Result")
-    # Load full model directly
-    clf = torch.load("Script files/classification_model.pth", map_location="cpu")
-    clf.eval()
+
+    clf = load_classification_model()
 
     with torch.no_grad():
         output = clf(img_tensor)
@@ -96,6 +112,7 @@ if uploaded_file:
 
     # ---- GRAD-CAM ----
     st.subheader("🔥 Grad-CAM Explanation")
+
     last_conv = next(m for m in reversed(list(clf.modules())) if isinstance(m, nn.Conv2d))
     cam_gen = GradCAM(clf, last_conv)
     cam, _ = cam_gen(img_tensor)
@@ -107,7 +124,9 @@ if uploaded_file:
 
     # ---- DETECTION ----
     st.subheader("📦 Detection Result")
+
     det_model = torch.load("Script files/detection_model.pt", map_location="cpu")
+
     try:
         results = det_model(img)
         results.render()
@@ -118,5 +137,7 @@ if uploaded_file:
 
 st.write("---")
 st.write("Made by Nandini 🩵")
+
+
 
 
