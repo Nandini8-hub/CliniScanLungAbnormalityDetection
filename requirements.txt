@@ -6,4 +6,5 @@ pillow
 numpy
 opencv-python-headless
 matplotlib
+dill
 
