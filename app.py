@@ -8,7 +8,7 @@ import torch.nn as nn
 import torchvision
 from torch.serialization import add_safe_globals
 
-# Allow necessary globals for safe PyTorch 2.6 loading
+# Safe globals for PyTorch 2.6
 add_safe_globals([
     nn.Sequential,
     nn.Conv2d,
@@ -17,31 +17,6 @@ add_safe_globals([
     nn.Linear,
     torchvision.models.efficientnet.EfficientNet
 ])
-
-# =============================
-# CLASSIFICATION MODEL
-# =============================
-class ClassificationModel(nn.Module):
-    def _init_(self):
-        super()._init_()
-
-        # Build EfficientNet architecture
-        self.model = torchvision.models.efficientnet_b0(pretrained=False)
-        self.model.classifier[1] = nn.Linear(1280, 2)  # Normal / Abnormal
-
-        # Load model state_dict
-        state_dict = torch.load("Script files/classification_model.pth", map_location="cpu")
-        self.model.load_state_dict(state_dict)
-        self.model.eval()
-
-    def forward(self, x):
-        return self.model(x)
-
-# =============================
-# DETECTION MODEL
-# =============================
-def load_detection_model():
-    return torch.load("Script files/detection_model.pt", map_location="cpu")
 
 # =============================
 # TRANSFORMS
@@ -110,16 +85,19 @@ if uploaded_file:
 
     # ---- CLASSIFICATION ----
     st.subheader("🔍 Classification Result")
-    clf = ClassificationModel()
+    # Load full model directly
+    clf = torch.load("Script files/classification_model.pth", map_location="cpu")
+    clf.eval()
+
     with torch.no_grad():
         output = clf(img_tensor)
         pred = output.argmax().item()
-        st.success(f"Prediction: {class_names[pred]}")
+        st.success(f"Prediction: *{class_names[pred]}*")
 
     # ---- GRAD-CAM ----
     st.subheader("🔥 Grad-CAM Explanation")
-    last_conv = next(m for m in reversed(list(clf.model.modules())) if isinstance(m, nn.Conv2d))
-    cam_gen = GradCAM(clf.model, last_conv)
+    last_conv = next(m for m in reversed(list(clf.modules())) if isinstance(m, nn.Conv2d))
+    cam_gen = GradCAM(clf, last_conv)
     cam, _ = cam_gen(img_tensor)
 
     heatmap = cv2.applyColorMap(np.uint8(cam * 255), cv2.COLORMAP_JET)
@@ -129,15 +107,16 @@ if uploaded_file:
 
     # ---- DETECTION ----
     st.subheader("📦 Detection Result")
-    det_model = load_detection_model()
+    det_model = torch.load("Script files/detection_model.pt", map_location="cpu")
     try:
         results = det_model(img)
         results.render()
         st.image(results.ims[0], caption="Detection Output", use_column_width=True)
     except:
-        st.warning("Detection model is not YOLO — showing raw output")
+        st.warning("Detection model not YOLO — showing raw output")
         st.write(det_model(img_tensor))
 
 st.write("---")
 st.write("Made by Nandini 🩵")
+
 
