@@ -82,7 +82,7 @@ st.sidebar.markdown("""
 - 🎯 Visual explanations (Grad-CAM)
 
 ### Classes:  
-**Normal**, **Abnormal**
+**🟢Normal**, **🔴Abnormal**
 
 ⚠️ *For educational, research & non-clinical use only!*
 """)
@@ -276,6 +276,7 @@ st.markdown("""
 ### 👩‍💻 Developed by **Nandini 💙**  
 #### For research, academic & educational use.
 """)
+
 
 
 
