@@ -23,7 +23,7 @@ st.title("🩺 CliniScan - Lung Abnormality Detection Dashboard")
 # -------------------------
 @st.cache_resource
 def load_classification_model():
-    model_path = r"Script files/classification_model.pth"  # adjust if needed
+    model_path = r"Script files/classification_model.pth"
     torch.serialization.add_safe_globals([EfficientNet])
     try:
         model = torch.load(model_path, map_location="cpu", weights_only=False)
@@ -41,7 +41,7 @@ clf_model = load_classification_model()
 @st.cache_resource
 def load_detection_model():
     try:
-        model = YOLO("Script files/detection_model.pt")  # adjust path if needed
+        model = YOLO("Script files/detection_model.pt")
         return model
     except Exception as e:
         st.error(f"Error loading detection model: {e}")
@@ -50,7 +50,7 @@ def load_detection_model():
 det_model = load_detection_model()
 
 # -------------------------
-# Grad-CAM Function
+# Grad-CAM Function (Fixed)
 # -------------------------
 def generate_gradcam(model, input_tensor, target_class=None):
     gradients = []
@@ -85,8 +85,8 @@ def generate_gradcam(model, input_tensor, target_class=None):
     loss.backward()
 
     # Compute Grad-CAM
-    gradient = gradients[0][0]
-    activation = activations[0][0]
+    gradient = gradients[0][0]          # (C, H, W)
+    activation = activations[0][0]      # (C, H, W)
     weights = gradient.mean(dim=(1, 2))
     cam = torch.zeros(activation.shape[1:], dtype=torch.float32)
     for i, w in enumerate(weights):
@@ -95,10 +95,12 @@ def generate_gradcam(model, input_tensor, target_class=None):
     cam = F.relu(cam)
     cam = cam - cam.min()
     cam = cam / (cam.max() + 1e-8)
-    cam = cam.unsqueeze(0).unsqueeze(0)
-    cam = F.interpolate(cam, size=(input_tensor.shape[2], input_tensor.shape[3]), mode='bilinear')
-    cam = cam.squeeze().cpu().numpy()
-    heatmap = np.uint8(255 * cam)
+
+    # Resize to match input image
+    cam = torch.tensor(cam).unsqueeze(0).unsqueeze(0)  # (1,1,H,W)
+    cam_resized = F.interpolate(cam, size=(input_tensor.shape[2], input_tensor.shape[3]), mode='bilinear', align_corners=False)
+    cam_resized = cam_resized.squeeze().cpu().numpy()  # safe squeeze
+    heatmap = np.uint8(255 * cam_resized)
     heatmap_pil = Image.fromarray(heatmap).convert("L").resize((input_tensor.shape[3], input_tensor.shape[2]))
     return heatmap_pil
 
@@ -146,6 +148,8 @@ if uploaded_file is not None:
         results = det_model.predict(np.array(image))
         annotated_image = results[0].plot()
         st.image(annotated_image, caption="Detection Results", use_column_width=True)
+
+
 
 
 
