@@ -6,7 +6,6 @@ import numpy as np
 import torchvision.transforms as transforms
 from torchvision.models import resnet50
 from torchvision.models.feature_extraction import create_feature_extractor
-import cv2  # Make sure cv2 is imported for Grad-CAM
 
 # -------------------------
 # Page Configuration
@@ -107,5 +106,6 @@ if uploaded_file:
     blended = cv2.addWeighted(heatmap, 0.5, cv2.resize(img_np, (224,224)), 0.5, 0)
 
     st.image(blended, caption="Grad-CAM Heatmap", use_column_width=False)
+
 
 
